@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/nats-io/nats.go"
-	"golang.org/x/sync/errgroup"
 )
 
 type Options struct {
@@ -81,9 +80,11 @@ func (b *broker) AddStream(streamName string, streamSubjects... string) error {
 }
 
 func (b *broker) Serve() error {
-	var wg errgroup.Group
 	for _, h := range b.handlers {
-		wg.Go(h.Serve)
+		err := h.Serve()
+		if err != nil {
+			return err
+		}
 	}
-	return wg.Wait()
+	return nil
 }

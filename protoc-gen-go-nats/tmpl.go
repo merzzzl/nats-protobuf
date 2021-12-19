@@ -10,7 +10,6 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/tudatravel/nats-protobuf/broker"
-	"golang.org/x/sync/errgroup"
 )
 {{range .GetService}}
 {{- $svcName := .GetName}}
@@ -68,8 +67,8 @@ func (s *{{$svcName | lower}}Server) {{.GetName}}NATS() error {
 		return proto.Marshal(out)
 	}
 	err := s.broker.Conn().Subscribe(
-		"nats.{{$protoPkgName}}.{{$svcName | lower}}.{{.GetName | lower}}",
-		"{{$protoPkgName}}",
+		"NATS.{{$protoPkgName | upper}}.{{$svcName | upper}}.{{.GetName | snake | upper}}",
+		"NATS_{{$protoPkgName | upper}}_{{$svcName | upper}}_{{.GetName | snake | upper}}",
 		{{.GetName | lower}}Func,
 	)
 	return err
@@ -89,9 +88,9 @@ func (s *{{$svcName | lower}}Server) {{.GetName}}JS() error {
 		return proto.Marshal(out)
 	}
 	err := s.broker.Conn().StreamSubscribe(
-		"js.{{$protoPkgName}}.{{$svcName | lower}}.{{.GetName | lower}}.request",
-		"js.{{$protoPkgName}}.{{$svcName | lower}}.{{.GetName | lower}}.responce",
-		"{{$protoPkgName}}",
+		"JS.{{$protoPkgName  | upper}}.{{$svcName | upper}}.{{.GetName | snake | upper}}.REQUEST",
+		"JS.{{$protoPkgName  | upper}}.{{$svcName | upper}}.{{.GetName | snake | upper}}.RESPONSE",
+		"JS_{{$protoPkgName  | upper}}_{{$svcName | upper}}_{{.GetName | snake | upper}}_REQUEST",
 		{{.GetName | lower}}Func,
 	)
 	return err
@@ -104,7 +103,7 @@ func (s *{{$svcName | lower}}Client) {{.GetName}}(ctx context.Context, in *{{.Ge
 	}
 	rsp, err := s.broker.Conn().Publish(
 		ctx,
-		"nats.{{$protoPkgName}}.{{$svcName | lower}}.{{.GetName | lower}}",
+		"NATS.{{$protoPkgName  | upper}}.{{$svcName | upper}}.{{.GetName | snake | upper}}",
 		req,
 		s.timeout,
 	)
@@ -126,7 +125,7 @@ func (s *{{$svcName | lower}}Client) {{.GetName}}Pub(ctx context.Context, in *{{
 	}
 	err = s.broker.Conn().StreamPublish(
 		ctx,
-		"js.{{$protoPkgName}}.{{$svcName | lower}}.{{.GetName | lower}}.request",
+		"JS.{{$protoPkgName  | upper}}.{{$svcName | upper}}.{{.GetName | snake | upper}}.REQUEST",
 		req,
 	)
 	if err != nil {
@@ -146,25 +145,30 @@ func (s *{{$svcName | lower}}Client) {{.GetName}}Sub(ctx context.Context, f func
 		return nil, err
 	}
 	err := s.broker.Conn().StreamSubscribe(
-		"js.{{$protoPkgName}}.{{$svcName | lower}}.{{.GetName | lower}}.response",
+		"JS.{{$protoPkgName  | upper}}.{{$svcName | upper}}.{{.GetName | snake | upper}}.RESPONSE",
 		"",
-		"{{$protoPkgName}}",
+		"JS_{{$protoPkgName  | upper}}_{{$svcName | upper}}_{{.GetName | snake | upper}}_RESPONSE",
 		{{.GetName | lower}}Func,
 	)
 	return err
 }
 {{end}}
 func (s *{{$svcName | lower}}Server) Serve() error {
-	err := s.broker.AddStream("{{$protoPkgName}}", "js.{{$protoPkgName}}.{{$svcName | lower}}.>")
+	err := s.broker.AddStream("{{$protoPkgName | upper}}", "JS.{{$protoPkgName  | upper}}.{{$svcName | upper}}.>")
 	if err != nil {
 		return err
 	}
-	var wg errgroup.Group
 	{{- range .GetMethod}}
-	wg.Go(s.{{.GetName}}NATS)
-	wg.Go(s.{{.GetName}}JS)
+	err = s.{{.GetName}}NATS()
+	if err != nil {
+		return err
+	}
+	err = s.{{.GetName}}JS()
+	if err != nil {
+		return err
+	}
 	{{- end}}
-	return wg.Wait()
+	return nil
 }
 {{- end}}
 `

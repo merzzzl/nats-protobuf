@@ -26,11 +26,11 @@ func (c *connection) Publish(ctx context.Context, subj string, data []byte, time
 		Data:    data,
 	}
 	_, msg = c.interceptorChain.applyPub(ctx, msg)
-	msg, err := c.nats.RequestMsg(msg, time.Minute)
+	msg, err := c.nats.RequestMsg(msg, timeout)
 	if err != nil {
 		return nil, err
 	}
-	_, msg = c.interceptorChain.applySub(ctx, msg)
+	// _, msg = c.interceptorChain.applySub(ctx, msg)
 	return msg.Data, nil
 }
 
@@ -42,7 +42,7 @@ func (c *connection) Subscribe(subj string, queue string, f func(ctx context.Con
 		if err != nil {
 			_ = msg.Nak()
 		}
-		if data == nil || len(msg.Reply) == 0 {
+		if len(msg.Reply) == 0 {
 			return
 		}
 		rsp := &nats.Msg{

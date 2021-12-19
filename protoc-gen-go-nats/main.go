@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"regexp"
 	"strings"
 	"text/template"
 
@@ -18,6 +19,14 @@ func templateFunc() template.FuncMap {
 	return template.FuncMap{
 		"lower": func(s string) string {
 			return strings.ToLower(s)
+		},
+		"upper": func(s string) string {
+			return strings.ToUpper(s)
+		},
+		"snake": func(s string) string {
+			rx := regexp.MustCompile(`(.)([A-Z])`)
+			snake := rx.ReplaceAllString(s, "${1}_${2}")
+			return strings.ToUpper(snake)
 		},
 		"base": func(in string) string {
 			idx := strings.LastIndex(in, ".")

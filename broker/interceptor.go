@@ -7,7 +7,7 @@ import (
 )
 
 type Interceptor interface {
-	apply(context.Context, *nats.Msg) (context.Context, *nats.Msg) 
+	apply(context.Context, *nats.Msg) (context.Context, *nats.Msg)
 }
 
 type pubInterceptor interface {
@@ -35,7 +35,6 @@ type subInterceptorHandler struct {
 
 func (i *pubInterceptorHandler) pubInterceptor() {}
 
-
 func NewPubInterceptor(f func(context.Context, *nats.Msg) (context.Context, *nats.Msg)) Interceptor {
 	return &pubInterceptorHandler{
 		function: f,
@@ -58,7 +57,7 @@ func NewSubInterceptor(f func(context.Context, *nats.Msg) (context.Context, *nat
 	}
 }
 
-func NewInterceptorChain(i... Interceptor) *InterceptorChain {
+func NewInterceptorChain(i ...Interceptor) *InterceptorChain {
 	chain := &InterceptorChain{
 		pub: []pubInterceptor{},
 		sub: []subInterceptor{},
@@ -75,6 +74,9 @@ func NewInterceptorChain(i... Interceptor) *InterceptorChain {
 }
 
 func (i *InterceptorChain) applyPub(ctx context.Context, msg *nats.Msg) (context.Context, *nats.Msg) {
+	if msg.Header == nil {
+		msg.Header = map[string][]string{}
+	}
 	for _, curent := range i.pub {
 		ctx, msg = curent.apply(ctx, msg)
 	}
@@ -82,6 +84,9 @@ func (i *InterceptorChain) applyPub(ctx context.Context, msg *nats.Msg) (context
 }
 
 func (i *InterceptorChain) applySub(ctx context.Context, msg *nats.Msg) (context.Context, *nats.Msg) {
+	if msg.Header == nil {
+		msg.Header = map[string][]string{}
+	}
 	for _, curent := range i.sub {
 		ctx, msg = curent.apply(ctx, msg)
 	}
