@@ -44,6 +44,7 @@ func (c *connection) Subscribe(subj string, queue string, f func(ctx context.Con
 			if errors.ErrorType(err) == errors.ErrNAK {
 				_ = msg.Nak()
 			}
+			return
 		}
 		if len(msg.Reply) == 0 {
 			return
@@ -56,6 +57,7 @@ func (c *connection) Subscribe(subj string, queue string, f func(ctx context.Con
 		err = msg.RespondMsg(rsp)
 		if err != nil {
 			_ = msg.Nak()
+			return
 		}
 	})
 	return err
@@ -80,6 +82,7 @@ func (c *connection) StreamSubscribe(subj string, reply string, queue string, f 
 			if errors.ErrorType(err) == errors.ErrNAK {
 				_ = msg.Nak()
 			}
+			return
 		}
 		if data == nil || len(reply) == 0 {
 			return
@@ -87,6 +90,7 @@ func (c *connection) StreamSubscribe(subj string, reply string, queue string, f 
 		err = c.StreamPublish(ctx, reply, data)
 		if err != nil {
 			_ = msg.Nak()
+			return
 		}
 	})
 	return err
