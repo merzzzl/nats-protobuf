@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
+	"github.com/tudatravel/nats-protobuf/broker/errors"
 )
 
 type Connection interface {
@@ -40,7 +41,9 @@ func (c *connection) Subscribe(subj string, queue string, f func(ctx context.Con
 		ctx, msg = c.interceptorChain.applySub(ctx, msg)
 		data, err := f(ctx, msg.Data)
 		if err != nil {
-			_ = msg.Nak()
+			if errors.ErrorType(err) == errors.ErrNAK {
+				_ = msg.Nak()
+			}
 		}
 		if len(msg.Reply) == 0 {
 			return
@@ -74,7 +77,9 @@ func (c *connection) StreamSubscribe(subj string, reply string, queue string, f 
 		ctx, msg = c.interceptorChain.applySub(ctx, msg)
 		data, err := f(ctx, msg.Data)
 		if err != nil {
-			_ = msg.Nak()
+			if errors.ErrorType(err) == errors.ErrNAK {
+				_ = msg.Nak()
+			}
 		}
 		if data == nil || len(reply) == 0 {
 			return
