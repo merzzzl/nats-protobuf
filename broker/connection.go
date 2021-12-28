@@ -5,14 +5,13 @@ import (
 	"time"
 
 	"github.com/nats-io/nats.go"
-	"github.com/tudatravel/nats-protobuf/broker/errors"
 )
 
 type Connection interface {
 	Publish(ctx context.Context, subj string, data []byte, timeout time.Duration) ([]byte, error)
 	Subscribe(subj string, queue string, f func(ctx context.Context, data []byte) ([]byte, error)) error
 	StreamPublish(ctx context.Context, subj string, data []byte) error
-	StreamSubscribe(subj string, reply string, queue string, f func(ctx context.Context, data []byte) ([]byte, error)) error
+	StreamSubscribe(subj string, queue string, f func(ctx context.Context, data []byte) error) error
 }
 
 type connection struct {
@@ -21,40 +20,39 @@ type connection struct {
 	js               nats.JetStreamContext
 }
 
-func (c *connection) Publish(ctx context.Context, subj string, data []byte, timeout time.Duration) ([]byte, error) {
+func (c *connection) publishMsg(ctx context.Context, subj string, data []byte) *nats.Msg {
 	msg := &nats.Msg{
 		Subject: subj,
 		Data:    data,
 	}
 	_, msg = c.interceptorChain.applyPub(ctx, msg)
+	return msg
+}
+
+func (c *connection) handleMsg(msg *nats.Msg) (context.Context, *nats.Msg) {
+	ctx := context.Background()
+	return c.interceptorChain.applySub(ctx, msg)
+}
+
+func (c *connection) Publish(ctx context.Context, subj string, data []byte, timeout time.Duration) ([]byte, error) {
+	msg := c.publishMsg(ctx, subj, data)
 	msg, err := c.nats.RequestMsg(msg, timeout)
 	if err != nil {
 		return nil, err
 	}
-	// _, msg = c.interceptorChain.applySub(ctx, msg)
 	return msg.Data, nil
 }
 
 func (c *connection) Subscribe(subj string, queue string, f func(ctx context.Context, data []byte) ([]byte, error)) error {
 	_, err := c.nats.QueueSubscribe(subj, queue, func(msg *nats.Msg) {
-		ctx := context.Background()
-		ctx, msg = c.interceptorChain.applySub(ctx, msg)
+		ctx, msg := c.handleMsg(msg)
 		data, err := f(ctx, msg.Data)
 		if err != nil {
-			if errors.ErrorType(err) == errors.ErrNAK {
-				_ = msg.Nak()
-			}
+			_ = msg.Nak()
 			return
 		}
-		if len(msg.Reply) == 0 {
-			return
-		}
-		rsp := &nats.Msg{
-			Subject: msg.Reply,
-			Data: data,
-		}
-		_, msg = c.interceptorChain.applyPub(ctx, msg)
-		err = msg.RespondMsg(rsp)
+		msg = c.publishMsg(ctx, msg.Reply, data)
+		err = c.nats.PublishMsg(msg)
 		if err != nil {
 			_ = msg.Nak()
 			return
@@ -64,30 +62,18 @@ func (c *connection) Subscribe(subj string, queue string, f func(ctx context.Con
 }
 
 func (c *connection) StreamPublish(ctx context.Context, subj string, data []byte) error {
-	msg := &nats.Msg{
-		Subject: subj,
-		Data:    data,
-	}
-	_, msg = c.interceptorChain.applyPub(ctx, msg)
+	msg := c.publishMsg(ctx, subj, data)
 	_, err := c.js.PublishMsg(msg)
-	return err
+	if err != nil {
+		return err
+	}
+	return nil
 }
 
-func (c *connection) StreamSubscribe(subj string, reply string, queue string, f func(ctx context.Context, data []byte) ([]byte, error)) error {
+func (c *connection) StreamSubscribe(subj string, queue string, f func(ctx context.Context, data []byte) (error)) error {
 	_, err := c.js.QueueSubscribe(subj, queue, func(msg *nats.Msg) {
-		ctx := context.Background()
-		ctx, msg = c.interceptorChain.applySub(ctx, msg)
-		data, err := f(ctx, msg.Data)
-		if err != nil {
-			if errors.ErrorType(err) == errors.ErrNAK {
-				_ = msg.Nak()
-			}
-			return
-		}
-		if data == nil || len(reply) == 0 {
-			return
-		}
-		err = c.StreamPublish(ctx, reply, data)
+		ctx, msg := c.handleMsg(msg)
+		err := f(ctx, msg.Data)
 		if err != nil {
 			_ = msg.Nak()
 			return

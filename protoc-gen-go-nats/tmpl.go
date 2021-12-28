@@ -58,13 +58,14 @@ func (s *{{$svcName | lower}}Server) {{.GetName}}NATS() error {
 		in := &{{.GetInputType | base}}{}
 		err := proto.Unmarshal(data, in)
 		if err != nil {
-			return nil, nil
+			return nil, err
 		}
-		out, err := s.handler.{{.GetName}}(ctx, in)
+		var rsp *{{.GetOutputType| base}}
+		rsp, err = s.handler.{{.GetName}}(ctx, in)
 		if err != nil {
-			return nil, nil
+			return nil, err
 		}
-		return proto.Marshal(out)
+		return proto.Marshal(rsp)
 	}
 	err := s.broker.Conn().Subscribe(
 		"NATS.{{$protoPkgName | upper}}.{{$svcName | upper}}.{{.GetName | snake | upper}}",
@@ -75,21 +76,30 @@ func (s *{{$svcName | lower}}Server) {{.GetName}}NATS() error {
 }
 
 func (s *{{$svcName | lower}}Server) {{.GetName}}JS() error {
-	{{.GetName | lower}}Func := func(ctx context.Context, data []byte) ([]byte, error) {
+	{{.GetName | lower}}Func := func(ctx context.Context, data []byte) error {
 		in := &{{.GetInputType | base}}{}
 		err := proto.Unmarshal(data, in)
 		if err != nil {
-			return nil, nil
+			return err
 		}
-		out, err := s.handler.{{.GetName}}(ctx, in)
+		var rsp *{{.GetOutputType| base}}
+		rsp, err = s.handler.{{.GetName}}(ctx, in)
 		if err != nil {
-			return nil, nil
+			return err
 		}
-		return proto.Marshal(out)
+		out, err := proto.Marshal(rsp)
+		if err != nil {
+			return err
+		}
+		err = s.broker.Conn().StreamPublish(
+			ctx,
+			"JS.{{$protoPkgName  | upper}}.{{$svcName | upper}}.{{.GetName | snake | upper}}.RESPONSE",
+			out,
+		)
+		return err
 	}
 	err := s.broker.Conn().StreamSubscribe(
 		"JS.{{$protoPkgName  | upper}}.{{$svcName | upper}}.{{.GetName | snake | upper}}.REQUEST",
-		"JS.{{$protoPkgName  | upper}}.{{$svcName | upper}}.{{.GetName | snake | upper}}.RESPONSE",
 		"JS_{{$protoPkgName  | upper}}_{{$svcName | upper}}_{{.GetName | snake | upper}}_REQUEST",
 		{{.GetName | lower}}Func,
 	)
@@ -135,18 +145,17 @@ func (s *{{$svcName | lower}}Client) {{.GetName}}Pub(ctx context.Context, in *{{
 }
 
 func (s *{{$svcName | lower}}Client) {{.GetName}}Sub(ctx context.Context, f func(context.Context, *{{.GetOutputType | base}}) error) error {
-	{{.GetName | lower}}Func := func(ctx context.Context, data []byte) ([]byte, error) {
+	{{.GetName | lower}}Func := func(ctx context.Context, data []byte) error {
 		in := &{{.GetOutputType | base}}{}
 		err := proto.Unmarshal(data, in)
 		if err != nil {
-			return nil, nil
+			return err
 		}
 		err = f(ctx, in)
-		return nil, err
+		return err
 	}
 	err := s.broker.Conn().StreamSubscribe(
 		"JS.{{$protoPkgName  | upper}}.{{$svcName | upper}}.{{.GetName | snake | upper}}.RESPONSE",
-		"",
 		"JS_{{$protoPkgName  | upper}}_{{$svcName | upper}}_{{.GetName | snake | upper}}_RESPONSE",
 		{{.GetName | lower}}Func,
 	)
